@@ -116,7 +116,7 @@ class KnowledgeBase(object):
             print("Invalid ask:", fact.statement)
             return []
 
-    def kb_retract(self, fact):
+    def kb_retract(self, fact_or_rule):
         """Retract a fact from the KB
 
         Args:
@@ -125,10 +125,52 @@ class KnowledgeBase(object):
         Returns:
             None
         """
-        printv("Retracting {!r}", 0, verbose, [fact])
+        printv("Retracting {!r}", 0, verbose, [fact_or_rule])
         ####################################################
         # Student code goes here
-        
+
+        if isinstance(fact_or_rule, Fact):
+            ind = self.facts.index(fact_or_rule)
+            if fact_or_rule in self.facts and not self.facts[ind].supported_by:
+                for supportFact in self.facts[ind].supports_facts:
+                    ind2 = self.facts[self.facts.index(supportFact)]
+
+                    if self.facts[ind] in ind2.supported_by:
+                        ind2.supported_by.remove(self.facts[ind])
+
+                    if len(ind2.supported_by) < 2:                          
+                        ind2.supported_by = []
+                        self.kb_retract(ind2)
+
+                for supportRule in self.facts[ind].supports_rules:
+                    if self.facts[ind] in supportRule.supported_by:
+                        supportRule.supported_by.remove(self.facts[ind])
+                        if len(supportRule.supported_by) < 2:
+                            supportRule.supported_by = []
+                            self.kb_retract(supportRule)
+
+                self.facts.remove(fact_or_rule)
+
+        elif isinstance(fact_or_rule, Rule):
+            ind = self.rules.index(fact_or_rule)
+            if not self.rules[ind].asserted:
+                for supportFact in self.rules[ind].supports_facts: 
+                    if self.rules[ind] in supportFact.supported_by:
+                        supportFact.supported_by.remove(self.rules[ind])
+
+                        if len(supportFact.supported_by) < 2:
+                            ind2 = self.facts[self.facts.index(supportFact)]
+                            ind2.supported_by = []
+                            self.kb_retract(ind2)
+
+                    for supportRule in self.rules[ind].supports_rules:
+                        if self.rules[ind] in supportRule.supported_by:
+                            supportRule.supported_by.remove(self.rules[ind])
+                            if len(supportRule.supported_by) < 2:
+                                supportRule.supported_by = []
+                                self.kb_retract(supportRule)
+
+                    self.rules.remove(fact_or_rule)
 
 class InferenceEngine(object):
     def fc_infer(self, fact, rule, kb):
@@ -142,7 +184,39 @@ class InferenceEngine(object):
         Returns:
             Nothing            
         """
+
         printv('Attempting to infer from {!r} and {!r} => {!r}', 1, verbose,
             [fact.statement, rule.lhs, rule.rhs])
         ####################################################
         # Student code goes here
+
+        # check the first element of the LHS of that rule against the facts in our KB
+        binding = match(fact.statement, rule.lhs[0]) 
+        if binding: 
+            supportedBy = [fact, rule]
+
+            if len(rule.lhs) > 1:
+                newLHS = []
+                
+                for index in rule.lhs[1:]:
+                    newStatement = instantiate(index, binding)
+                    newLHS.append(newStatement)
+                ruleStatement = []
+                ruleStatement.append(newLHS)
+                
+                newRHS = instantiate(rule.rhs, binding)
+                ruleStatement.append(newRHS)
+                newRule = Rule(ruleStatement, supportedBy)
+                
+                fact.supports_rules.append(newRule)
+                rule.supports_rules.append(newRule)
+        
+                kb.kb_add(newRule)
+
+            else:
+                newStatement = instantiate(rule.rhs, binding)
+                newFact = Fact(newStatement, supportedBy)
+                fact.supports_facts.append(newFact)
+                rule.supports_facts.append(newFact)
+                
+                kb.kb_add(newFact)
